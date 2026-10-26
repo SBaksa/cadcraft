@@ -334,6 +334,22 @@ fn vpextra_cannot_inject_records_or_handles() {
     assert!(the_viewport(&again).1.extra.iter().all(|t| (1..1000).contains(&t.code)));
 }
 
+/// Structural groups inside the record's own AcDbViewport subclass (a second handle, a group
+/// brace) aren't kept either: written back, the record would have two handles.
+#[test]
+fn a_viewport_records_own_structural_groups_are_not_kept() {
+    let (d, h) = base();
+    let text = cadcraft_io::write_dxf(&d);
+    let g: Vec<(i32, String)> = vec![(5, "FFFFF1".into()), (105, "FFFFF2".into()), (102, "{ACAD_REACTORS".into()), (13, "4.5".into())];
+    let back = cadcraft_io::read_dxf(inject(&text, h, &g).as_bytes()).unwrap();
+    let (_, v) = the_viewport(&back);
+    let codes: Vec<i32> = v.extra.iter().map(|t| t.code).collect();
+    assert!(codes.iter().all(|c| !matches!(c, 5 | 102 | 105)), "{codes:?}");
+    assert!(v.extra.iter().any(|t| t.code == 13 && t.value.trim() == "4.5"), "a viewport's own group is still kept: {:?}", v.extra);
+    let saved = cadcraft_io::write_dxf(&back);
+    assert!(!saved.lines().any(|l| l.trim() == "FFFFF1" || l.trim() == "FFFFF2"), "no second handle");
+}
+
 /// A viewport whose only UCS group is its base UCS handle (346) keeps that base UCS.
 #[test]
 fn a_base_ucs_handle_alone_is_kept() {

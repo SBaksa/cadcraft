@@ -294,9 +294,14 @@ fn viewport_ucs(tags: &[Tag]) -> Option<ViewportUcs> {
 /// A VIEWPORT's groups CADCraft doesn't model, as read ([`VIEWPORT_NOT_EXTRA`]), plus those of
 /// CADCraft's xdata copy that the record lacks (a DWG drops some).
 fn viewport_extra(tags: &[Tag]) -> Vec<RawTag> {
+    // Only groups that can stand inside the AcDbViewport subclass: no record start (0), handle (5,
+    // 105), subclass (100), group brace (102) or xdata (1000 on), which written back would break
+    // the record or give it a second handle.
+    let own_group = |code: i32| (1..1000).contains(&code) && !matches!(code, 5 | 100 | 102 | 105);
+    // The record's own pointer groups stay: they are remapped with the record.
     let mut out: Vec<RawTag> = viewport_groups(tags)
         .iter()
-        .filter(|t| !VIEWPORT_NOT_EXTRA.contains(&t.code))
+        .filter(|t| own_group(t.code) && !VIEWPORT_NOT_EXTRA.contains(&t.code))
         .take(MAX_VIEWPORT_EXTRA)
         .map(|t| RawTag { code: t.code, value: t.str() })
         .collect();
@@ -304,11 +309,7 @@ fn viewport_extra(tags: &[Tag]) -> Vec<RawTag> {
         if out.len() >= MAX_VIEWPORT_EXTRA {
             break;
         }
-        // Only groups that can stand inside the AcDbViewport subclass, as `viewport_groups` reads
-        // them from the record: no record start (0), handle (5, 105), subclass (100), group
-        // brace (102) or xdata (1000 on), which written back would break the record or add to it.
-        let own_group = (1..1000).contains(&code) && !matches!(code, 5 | 100 | 102 | 105);
-        if own_group && !VIEWPORT_NOT_EXTRA.contains(&code) && !crate::dxf_raw::is_pointer(code) && !out.iter().any(|t| t.code == code) {
+        if own_group(code) && !VIEWPORT_NOT_EXTRA.contains(&code) && !crate::dxf_raw::is_pointer(code) && !out.iter().any(|t| t.code == code) {
             out.push(RawTag { code, value });
         }
     }
@@ -1073,6 +1074,8 @@ struct Rx {
     layers: HashMap<String, String>,
     /// UCS record handle (upper case) → UCS name (VIEWPORT groups 345 and 346).
     ucss: HashMap<String, String>,
+    /// Upper-case UCS name → UCS name, for a viewport that names its UCS in CADCraft's xdata.
+    ucs_names: HashMap<String, String>,
 }
 
 /// The plot style names of a file: the entries of the `ACAD_PLOTSTYLENAME` dictionary of the
@@ -1187,7 +1190,7 @@ fn entity_extras(kind: &str, tags: &[Tag], h: Handle, k: &mut EntityKind, rx: &m
                 let t = T(viewport_groups(tags));
                 let by_handle = |code: i32| t.s(code).and_then(|h| rx.ucss.get(&h.trim().to_ascii_uppercase()).cloned());
                 let (xn, xb) = crate::dxf_ext::read_ucs_names(tags);
-                let known = |n: Option<String>| n.and_then(|n| rx.ucss.values().find(|u| u.eq_ignore_ascii_case(&n)).cloned());
+                let known = |n: Option<String>| n.and_then(|n| rx.ucs_names.get(&n.to_ascii_uppercase()).cloned());
                 u.named = by_handle(345).or_else(|| known(xn));
                 u.base = by_handle(346).or_else(|| known(xb));
             }
@@ -1524,6 +1527,7 @@ fn tables(tags: &[Tag], d: &mut Drawing, rx: &mut Rx) {
                 rx.layers.insert(h.trim().to_ascii_uppercase(), n);
             }
             "UCS" => {
+                rx.ucs_names.entry(n.to_ascii_uppercase()).or_insert_with(|| n.clone());
                 rx.ucss.insert(h.trim().to_ascii_uppercase(), n);
             }
             _ => {}
