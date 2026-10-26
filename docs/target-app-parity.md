@@ -1,6 +1,6 @@
 # Target-app parity: CADCraft vs AutoCAD 2027
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (Block Editor for static blocks; blocks evidence updated, numbers not re-measured) · **Target:** Autodesk AutoCAD 2027
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-26 · **Change:** minor (drawing output is called Plot, #443; the Plot dialog evidence updated, numbers not re-measured) · **Target:** Autodesk AutoCAD 2027
 
 The authoritative assessment of how close CADCraft is to AutoCAD, and how much Opus 5.5 work
 remains. [ROADMAP.md](../ROADMAP.md) summarises it, [gaps.md](gaps.md) lists every shortfall,
@@ -111,7 +111,7 @@ path, which matches the discounts.
 ## Essentials user
 
 A casual user who sticks to the essential features: start a drawing, the common draw and modify tools with default
-settings, undo, save, print a PDF. Excluded: advanced options, sheet sets, xrefs, plot styles,
+settings, undo, save, plot a PDF. Excluded: advanced options, sheet sets, xrefs, plot styles,
 annotation styles, exchange edge cases and everything excluded above.
 
 | Core feature | Weight | Depth | Weighted |
@@ -133,7 +133,7 @@ annotation styles, exchange edge cases and everything excluded above.
 | Discount | Factor | Evidence |
 |---|---:|---|
 | Launch and stability | ×0.90 | startup crash on Intel UHD graphics (#33, fixed in 0.4.0), lines not visible (#44), Linux mouse delay (#25), web open/save broken (#55, #133) |
-| Discoverability and UI clarity | ×0.92 | no right-click menus (dynamic input got real pointer boxes in #60, which raised this from ×0.90), Plot has no plot dialog (#160), some menu items only recently got dialogs (#126) |
+| Discoverability and UI clarity | ×0.92 | no right-click menus (dynamic input got real pointer boxes in #60, which raised this from ×0.90), some menu items only recently got dialogs (#126) |
 | Opening files people send them | ×0.85 | DWGs from others untested on real files; a 10 MB DWG failed (#57); `.dxf` from Finder fails (#158); pre-2007 CJK/Cyrillic DXF garbled (no code pages) |
 
 **Essentials user ≈ 65% × 0.90 × 0.92 × 0.85 ≈ 46%** (estimated).
@@ -223,6 +223,7 @@ DWG/DXF corpus (files from people who own them); black-box checks in AutoCAD of 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-26 | minor | Drawing output is called Plot, not Print (#443); the Discoverability evidence no longer says Plot has no dialog (it has one); percentages and hours not re-measured |
 | 2026-10-12 | minor | Hatch row evidence: Hatch and Gradient / Hatch Edit dialogs; percentages and hours not re-measured |
 | 2026-10-12 | minor | Blocks row evidence: Block Editor for static blocks (BEDIT, BSAVE, BSAVEAS, BCLOSE); percentages and hours not re-measured |
 | 2026-10-11 | minor | Evidence text of the feature-area rows refreshed for merged work (#397, #406, #408, #417, #420, #433, #448, #451, #453, #459, #468, #507, #510, #525, #534, #546, #547, #558, #563, #564, #567, #571); parity percentages and hours not re-measured |
