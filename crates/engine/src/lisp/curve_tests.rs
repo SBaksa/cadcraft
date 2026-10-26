@@ -293,6 +293,63 @@ fn getfiled_asks_at_the_command_line() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// New-file mode asks before a file that is there is replaced, unless flag 32 says not to; No
+/// (the default) asks for a name again.
+#[test]
+fn getfiled_asks_before_replacing_a_file() {
+    let mut s = session();
+    let dir = std::env::temp_dir().join(format!("cadcraft-getfiled-replace-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let real = dir.join("plan.dxf");
+    std::fs::write(&real, "0\nEOF\n").unwrap();
+    let real = real.to_string_lossy().replace('\\', "/");
+    let ask = format!("{real} already exists. Replace it? [Yes/No] <No>: ");
+    // Enter keeps the file: the name is asked again. Yes replaces it.
+    s.cmdline("(setq f (getfiled \"Save\" \"\" \"dxf\" 1))").unwrap();
+    s.cmdline(&real).unwrap();
+    assert!(s.lisp_running());
+    assert_eq!(s.prompt_text(), ask);
+    s.input(crate::Input::Enter).unwrap();
+    assert!(s.lisp_running());
+    assert_eq!(s.prompt_text(), "Save: ");
+    s.cmdline(&real).unwrap();
+    s.cmdline("yes").unwrap();
+    assert!(!s.lisp_running());
+    assert_eq!(to_text(&s.lisp_var("F"), true), format!("\"{real}\""));
+    // No: another name, taken.
+    s.cmdline("(setq f (getfiled \"Save\" \"\" \"dxf\" 1))").unwrap();
+    s.cmdline(&real).unwrap();
+    s.cmdline("n").unwrap();
+    assert_eq!(s.prompt_text(), "Save: ");
+    s.cmdline("other").unwrap();
+    assert_eq!(to_text(&s.lisp_var("F"), true), "\"other.dxf\"");
+    // Flag 32 with flag 1: no question.
+    s.cmdline("(setq f (getfiled \"Save\" \"\" \"dxf\" 33))").unwrap();
+    s.cmdline(&real).unwrap();
+    assert!(!s.lisp_running());
+    assert_eq!(to_text(&s.lisp_var("F"), true), format!("\"{real}\""));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A default ending in a path delimiter, or any default with flag 16, is the folder relative
+/// names are in, not a file name Enter takes.
+#[test]
+fn getfiled_default_folder() {
+    let mut s = session();
+    s.cmdline("(setq f (getfiled \"Save\" \"plans/\" \"dxf\" 1))").unwrap();
+    assert_eq!(s.prompt_text(), "Save: ");
+    s.cmdline("site").unwrap();
+    assert_eq!(to_text(&s.lisp_var("F"), false), "plans/site.dxf");
+    s.cmdline("(setq f (getfiled \"Save\" \"plans\" \"dxf\" 17))").unwrap();
+    s.cmdline("site").unwrap();
+    assert_eq!(to_text(&s.lisp_var("F"), false), std::path::Path::new("plans").join("site.dxf").to_string_lossy());
+    // Enter with only a folder: no name, nil.
+    s.cmdline("(setq f (getfiled \"Save\" \"plans/\" \"dxf\" 1))").unwrap();
+    s.input(crate::Input::Enter).unwrap();
+    assert!(!s.lisp_running());
+    assert_eq!(to_text(&s.lisp_var("F"), true), "nil");
+}
+
 #[test]
 fn osnap_finds_the_snap_near_a_point() {
     let mut s = session();

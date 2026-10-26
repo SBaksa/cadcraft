@@ -559,6 +559,12 @@ impl Session {
                     r.waiting = Some(Need::Get(input::with_first(&req, p)));
                 }
             }
+            // The prompt goes on as another request (`getfiled`: replace the file, or a name again).
+            input::Answer::Ask(next) => {
+                if let Some(r) = self.lisp.run.as_mut() {
+                    r.waiting = Some(Need::Get(*next));
+                }
+            }
         }
         true
     }

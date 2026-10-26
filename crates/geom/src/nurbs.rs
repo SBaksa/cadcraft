@@ -499,7 +499,8 @@ impl Spline {
         let (a, b, sign) = if a <= b { (a, b, 1.0) } else { (b, a, -1.0) };
         let (a, b) = (a.clamp(lo, hi), b.clamp(lo, hi));
         let f = |t: f64| {
-            let (p, d) = (self.eval(t) - origin, self.derivative(t));
+            // Validated once above: no per-sample validity scan (it walks the knots).
+            let (p, d) = (self.eval_valid(t, lo, hi) - origin, self.derivative_unchecked(t));
             (p.x * d.y - p.y * d.x) / 2.0
         };
         // A panel sweeping next to no area is judged against the size of the whole curve.
