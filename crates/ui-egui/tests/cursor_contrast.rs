@@ -27,11 +27,10 @@ impl Canvas {
         session.execute("view.set", &json!({"center": [100, 100], "height": 400})).unwrap();
         session.settings.gridmode = false;
         session.settings.dynmode = false;
+        session.execute("ucsicon", &json!({"on": false})).unwrap();
         let mut app = CadApp::new(session, Services::default());
         app.canvas.zoom_pending = false;
         app.ui.show_command_line = false;
-        // The UCS icon is UCSICON, which the drawing keeps.
-        app.run("ucsicon", json!({"on": false})).unwrap();
         app.ui.show_viewcube = false;
         app.run("options", json!({"theme": "dark", "systemCursor": false, "PICKBOX": 4, "SELECTIONPREVIEW": 1})).unwrap();
         let mut canvas = Self { app, ctx: Context::default(), previous_theme };
