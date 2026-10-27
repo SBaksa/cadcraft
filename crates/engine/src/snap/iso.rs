@@ -338,4 +338,16 @@ mod tests {
         assert!(rect_grid_lines(v, f64::NAN, Vec2::ZERO, 0.0, 5).is_empty());
         assert!(rect_grid_lines(v, 1.0, Vec2::new(f64::INFINITY, 0.0), 0.0, 5).is_empty());
     }
+
+    /// A view far larger than any grid (a zoom to hostile extents) draws no grid instead of
+    /// overflowing the line count.
+    #[test]
+    fn rect_grid_lines_survive_extreme_views() {
+        let huge = Bounds2::new(Vec2::new(-1e300, -1e300), Vec2::new(1e300, 1e300));
+        assert!(rect_grid_lines(huge, 1.0, Vec2::ZERO, 0.0, 5).is_empty());
+        let far = Bounds2::new(Vec2::new(1e300, 1e300), Vec2::new(1e300 + 1.0, 1e300 + 1.0));
+        assert!(rect_grid_lines(far, 1.0, Vec2::ZERO, 0.0, 5).len() <= 2 * (MAX_GRID_LINES + 1));
+        let normal = Bounds2::new(Vec2::new(-5.0, 0.0), Vec2::new(5.0, 10.0));
+        assert_eq!(rect_grid_lines(normal, 1.0, Vec2::ZERO, 0.0, 5).len(), 22);
+    }
 }
