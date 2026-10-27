@@ -596,7 +596,10 @@ fn name_faces(
 #[cfg(not(target_arch = "wasm32"))]
 fn load_name_faces(missing: Scripts, primary: Option<&egui::FontData>) {
     use cadcraft_fonts::ttf::{Face, fallback_for};
-    let primary = primary.and_then(|d| Face::new(std::sync::Arc::new(d.font.to_vec()), d.index));
+    let primary = primary.and_then(|d| {
+        let bytes: &[u8] = (*d.font).as_ref();
+        Face::new(std::sync::Arc::new(bytes.to_vec()), d.index)
+    });
     let mut found: Vec<(Scripts, Option<Face>)> = Vec::new();
     for (s, sample) in Scripts::SAMPLES {
         if !missing.contains(s) {
