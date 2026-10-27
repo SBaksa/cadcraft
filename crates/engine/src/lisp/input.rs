@@ -212,6 +212,7 @@ impl GetRequest {
                 let t = if spaces { t } else { t.split(' ').next().unwrap_or("") };
                 Ok(Value::str(t))
             }
+            GetKind::Kword if any => Ok(Value::str(t)),
             GetKind::Kword => Err("Invalid option keyword.".into()),
             GetKind::File { new } => {
                 let Some(name) = self.file.complete(t).or_else(|| self.file.complete(&self.file.default)) else { return Ok(Value::Nil) };
@@ -309,7 +310,7 @@ fn keyword(keywords: &[String], t: &str) -> Option<String> {
 impl Session {
     /// ANGBASE (radians).
     fn lisp_angbase(&self) -> f64 {
-        crate::sysvars::get(self, "ANGBASE").and_then(|v| v.as_f64()).unwrap_or(0.0)
+        self.doc().map(|d| d.header.f64("ANGBASE", 0.0)).unwrap_or(0.0)
     }
 }
 
