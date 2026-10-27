@@ -627,7 +627,6 @@ impl CadApp {
         s
     }
 
-    /// Per-frame logic before layout.
     /// Consume asynchronous work on every logic callback, including hidden `run_logic` ticks.
     ///
     /// Consume-based queues and screenshot settlement run on **every** call, whichever pass

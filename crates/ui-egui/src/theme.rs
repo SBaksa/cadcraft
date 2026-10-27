@@ -402,6 +402,16 @@ fn language_fonts(language: &str) -> egui::FontDefinitions {
             }
         }
     }
+    // `default_fonts` supplies Ubuntu-Light (Proportional) and Hack (Monospace). Hack also
+    // carries the modifier symbols (⇧) that proportional shortcut labels use; keep it as a
+    // bounded late fallback when Ubuntu-Light lacks one. The monochrome emoji face (enabled by
+    // `monochrome_emoji_fonts`) supplies ⌘ in both families.
+    if fonts.font_data.contains_key("Hack")
+        && let Some(f) = fonts.families.get_mut(&FontFamily::Proportional)
+        && !f.iter().any(|name| name == "Hack")
+    {
+        f.push("Hack".into());
+    }
     fonts
 }
 
@@ -516,16 +526,6 @@ pub fn install_fonts_for(ctx: &egui::Context, language: &str, names: Scripts) {
     }
     #[cfg(target_arch = "wasm32")]
     let _ = names;
-    // `default_fonts` supplies Ubuntu-Light (Proportional) and Hack (Monospace). Hack also
-    // carries the modifier symbols (⇧) that proportional shortcut labels use; keep it as a
-    // bounded late fallback when Ubuntu-Light lacks one. The monochrome emoji face (enabled by
-    // `monochrome_emoji_fonts`) supplies ⌘ in both families.
-    if fonts.font_data.contains_key("Hack")
-        && let Some(f) = fonts.families.get_mut(&FontFamily::Proportional)
-        && !f.iter().any(|name| name == "Hack")
-    {
-        f.push("Hack".into());
-    }
     ctx.set_fonts(fonts);
 }
 
@@ -596,10 +596,7 @@ fn name_faces(
 #[cfg(not(target_arch = "wasm32"))]
 fn load_name_faces(missing: Scripts, primary: Option<&egui::FontData>) {
     use cadcraft_fonts::ttf::{Face, fallback_for};
-    let primary = primary.and_then(|d| {
-        let bytes: &[u8] = (*d.font).as_ref();
-        Face::new(std::sync::Arc::new(bytes.to_vec()), d.index)
-    });
+    let primary = primary.and_then(|d| Face::new(std::sync::Arc::new((*d.font).as_ref().to_vec()), d.index));
     let mut found: Vec<(Scripts, Option<Face>)> = Vec::new();
     for (s, sample) in Scripts::SAMPLES {
         if !missing.contains(s) {
