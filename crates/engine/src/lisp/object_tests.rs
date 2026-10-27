@@ -77,6 +77,20 @@ fn handent_reaches_table_records_and_layouts() {
     assert_eq!(ok(&mut s, "(handent \"FFFFFF\")"), "nil");
 }
 
+/// The ENDBLK record that closes a block definition has a handle in the file too.
+#[test]
+fn handent_reaches_the_endblk_of_a_block() {
+    let mut s = session();
+    let dxf = String::from_utf8(cadcraft_io::write(s.doc().unwrap(), "h.dxf").unwrap()).unwrap();
+    let end = file_handle(&dxf, "ENDBLK", "100", "AcDbBlockEnd");
+    let e = format!("(handent \"{end}\")");
+    assert_eq!(ok(&mut s, &e), format!("<Entity name: {}>", end.to_ascii_lowercase()));
+    assert_eq!(ok(&mut s, &format!("(cdr (assoc 0 (entget {e})))")), "\"ENDBLK\"");
+    assert_eq!(ok(&mut s, &format!("(cdr (assoc 5 (entget {e})))")), format!("\"{end}\""));
+    // It isn't a table record.
+    assert_eq!(ok(&mut s, "(cdr (assoc 0 (entget (tblobjname \"BLOCK\" \"*Model_Space\"))))"), "\"BLOCK\"");
+}
+
 /// Every record of every table: its name, its list's handle and handent agree.
 #[test]
 fn tblobjname_entget_and_handent_agree_for_every_table() {

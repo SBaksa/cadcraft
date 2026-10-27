@@ -676,15 +676,15 @@ fn written_records(tags: &[Tag]) -> Vec<Rec> {
     out
 }
 
-/// The non-graphic records of written DXF `tags` (table records, the BLOCK record that starts
-/// each block definition, and objects): handle, type and groups after the `0` group. A DIMSTYLE
-/// names its handle in group 105.
+/// The non-graphic records of written DXF `tags` (table records, the BLOCK and ENDBLK records
+/// around each block definition, and objects): handle, type and groups after the `0` group. A
+/// DIMSTYLE names its handle in group 105.
 pub(crate) fn object_records(tags: &[Tag]) -> Vec<(Handle, String, Vec<Tag>)> {
     let mut out = Vec::new();
     for r in written_records(tags) {
         let wanted = match r.sec.as_str() {
             "TABLES" => r.kind != "TABLE" && r.kind != "ENDTAB",
-            "BLOCKS" => r.kind == "BLOCK",
+            "BLOCKS" => matches!(r.kind.as_str(), "BLOCK" | "ENDBLK"),
             "OBJECTS" => true,
             _ => false,
         };
