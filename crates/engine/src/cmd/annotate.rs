@@ -1070,7 +1070,8 @@ impl Interactive for LinearM {
             }
             (_, Input::Point(at)) => {
                 let (Some(&a), Some(&b)) = (self.pts.first(), self.pts.get(1)) else { return Ok(Step::Continue) };
-                let k = self.text.apply(dim(s, linear_kind(a, b, at, self.rotation, self.aligned, s.input_ucs().rotation()), at, a, b, Vec2::ZERO, ""));
+                let k =
+                    self.text.apply(dim(s, linear_kind(a, b, at, self.rotation, self.aligned, s.input_ucs().rotation()), at, a, b, Vec2::ZERO, ""));
                 add_dim(s, k)?;
                 if let Some(EntityKind::Dimension(d)) = s.last_dim.and_then(|h| s.doc().ok()?.entity(h).map(|e| e.kind.clone())) {
                     let st = s.doc()?.dim_style(&d.style).cloned().unwrap_or_default();
@@ -1097,7 +1098,15 @@ impl Interactive for LinearM {
     fn preview(&self, s: &Session, c: Vec2) -> Vec<EntityKind> {
         match self.pts.as_slice() {
             [a] => vec![super::helpers::line(*a, c)],
-            [a, b] => vec![self.text.apply(dim(s, linear_kind(*a, *b, c, self.rotation, self.aligned, s.input_ucs().rotation()), c, *a, *b, Vec2::ZERO, ""))],
+            [a, b] => vec![self.text.apply(dim(
+                s,
+                linear_kind(*a, *b, c, self.rotation, self.aligned, s.input_ucs().rotation()),
+                c,
+                *a,
+                *b,
+                Vec2::ZERO,
+                "",
+            ))],
             _ => Vec::new(),
         }
     }
