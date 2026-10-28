@@ -75,3 +75,15 @@ fn the_current_layer_round_trips_through_dwg() {
         assert_eq!(r.header.str("CLAYER", "?"), name, "DWG");
     }
 }
+
+/// `$CLAYER` naming the layer in other letter case still finds it: the DWG comes back on the
+/// layer, under the layer's own spelling, not on "0" (#2252).
+#[test]
+fn a_current_layer_in_other_case_resolves_to_the_layer() {
+    let mut d = Drawing::new_metric();
+    d.layers.push(cadcraft_doc::Layer::new("Survey_\u{c4}"));
+    d.header.set_str("CLAYER", "Survey_\u{e4}");
+    let dwg = cadcraft_io::write(&d, "x.dwg").unwrap();
+    let r = cadcraft_io::read(&dwg, "x.dwg").unwrap();
+    assert_eq!(r.header.str("CLAYER", "?"), "Survey_\u{c4}");
+}
