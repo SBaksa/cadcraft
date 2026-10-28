@@ -7,6 +7,7 @@
 //! [`crate::cmd::file::entity_codec`]), so what `entget` shows is what a DXF file holds, except
 //! for angles, which are radians in a list and degrees in a file.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use cadcraft_doc::{Entity, Handle, Space};
@@ -461,6 +462,7 @@ fn end_block(ctx: &mut Ctx<'_>) -> Value {
     }
     let name = b.name.clone();
     d.blocks.insert(name.clone(), Arc::new(b));
+    ctx.env.block_next = None;
     ctx.s.touch();
     Value::str(&name)
 }
@@ -545,6 +547,29 @@ fn handles_in_order(ctx: &mut Ctx<'_>) -> Arc<Vec<Handle>> {
     v
 }
 
+/// Every block-definition entity's successor within its block, cached per drawing like
+/// [`handles_in_order`]: one pass over the blocks, then `entnext` is a hash lookup instead of a
+/// scan of the block (and of every block, to find which holds the entity).
+fn block_successors(ctx: &mut Ctx<'_>) -> Arc<HashMap<Handle, Option<Handle>>> {
+    let Ok(st) = ctx.s.state() else { return Arc::default() };
+    let key = Arc::as_ptr(&st.doc) as usize;
+    if let Some((k, v)) = &ctx.env.block_next
+        && *k == key
+    {
+        return v.clone();
+    }
+    let mut m = HashMap::new();
+    for b in st.doc.blocks.values() {
+        let mut it = b.entities.iter().map(|e| e.handle).peekable();
+        while let Some(h) = it.next() {
+            m.insert(h, it.peek().copied());
+        }
+    }
+    let m = Arc::new(m);
+    ctx.env.block_next = Some((key, m.clone()));
+    m
+}
+
 pub fn entlast(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
     arity(&a, 0, 0)?;
     Ok(Flow::Value(handles_in_order(ctx).last().map(|h| Value::Ename(*h)).unwrap_or_default()))
@@ -555,12 +580,10 @@ pub fn entnext(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
     // From an entity of a block definition: the next one in that block, nil after the last (#1700).
     if let Some(v) = a.first().filter(|v| !v.is_nil()) {
         let h = ename(v)?;
-        if let Ok(d) = ctx.s.doc()
-            && d.entity(h).is_none()
-            && let Some(b) = block_of(d, h)
+        if ctx.s.doc().is_ok_and(|d| d.entity(h).is_none())
+            && let Some(next) = block_successors(ctx).get(&h)
         {
-            let next = b.entities.iter().skip_while(|e| e.handle != h).nth(1).map(|e| Value::Ename(e.handle));
-            return Ok(Flow::Value(next.unwrap_or_default()));
+            return Ok(Flow::Value(next.map(Value::Ename).unwrap_or_default()));
         }
     }
     let order = handles_in_order(ctx);

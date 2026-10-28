@@ -234,3 +234,22 @@ fn a_definition_that_isnt_added_leaves_no_layer() {
     assert_eq!(ok(&mut s, ENDBLK), "\"EB\"");
     assert!(has(&s, "PARTS"), "the block's layer exists once it is added");
 }
+
+/// entnext walks entmade block entities in order through the cached successor index, and a
+/// redefinition (same drawing, same block name) is not served from the stale index.
+#[test]
+fn entnext_walks_entmade_blocks_and_sees_a_redefinition() {
+    let mut s = session();
+    let walk = r#"(progn (setq e (cdr (assoc -2 (tblsearch "BLOCK" "EB"))) types nil)
+      (while e (setq types (cons (cdr (assoc 0 (entget e))) types) e (entnext e)))
+      (reverse types))"#;
+    for code in [BLOCK_EB, LINE, CIRCLE, ENDBLK] {
+        ok(&mut s, code);
+    }
+    assert_eq!(ok(&mut s, walk), "(\"LINE\" \"CIRCLE\")");
+    assert_eq!(ok(&mut s, walk), "(\"LINE\" \"CIRCLE\")", "second walk from the cache");
+    for code in [BLOCK_EB, CIRCLE, LINE, LINE, ENDBLK] {
+        ok(&mut s, code);
+    }
+    assert_eq!(ok(&mut s, walk), "(\"CIRCLE\" \"LINE\" \"LINE\")");
+}
