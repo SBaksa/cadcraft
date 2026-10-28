@@ -603,12 +603,12 @@ impl CadApp {
 
     /// The scripts of the names the interface shows (drawing titles and their layers, layouts and
     /// blocks) that need a font beyond the interface language's. The names are scanned again only
-    /// when a drawing changes, opens or closes.
+    /// when a drawing changes (a new revision, or a new drawing), opens or closes.
     fn name_scripts(&mut self) -> theme::Scripts {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for d in &self.session.docs {
-            (d.uid, std::sync::Arc::as_ptr(&d.doc) as usize, &d.title).hash(&mut h);
+            (d.uid, d.revision, std::sync::Arc::as_ptr(&d.doc) as usize, &d.title).hash(&mut h);
         }
         let key = h.finish();
         if let Some((k, s)) = self.font_names
@@ -1000,6 +1000,14 @@ mod tests {
         rename(&mut a, "Walls");
         frame(&mut a, &ctx, None);
         assert_eq!(a.fonts_names.map(|f| f.0), Some(theme::Scripts::NONE));
+        // An edit in place through `doc_mut` keeps the drawing's pointer; the scan still sees it.
+        let before = a.session.state().map(|st| std::sync::Arc::as_ptr(&st.doc)).unwrap();
+        if let Some(l) = a.session.doc_mut().unwrap().layers.first_mut() {
+            l.name = "도면 레이어".into();
+        }
+        assert_eq!(a.session.state().map(|st| std::sync::Arc::as_ptr(&st.doc)).unwrap(), before, "edited in place");
+        frame(&mut a, &ctx, None);
+        assert_eq!(a.fonts_names.map(|f| f.0), Some(theme::Scripts::HANGUL), "the in-place rename is scanned");
     }
 
     /// One real UI frame whose first pass asks egui for a second layout pass, as a popup or a

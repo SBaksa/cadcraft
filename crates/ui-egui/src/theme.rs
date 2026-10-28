@@ -531,11 +531,21 @@ pub fn install_fonts_for(ctx: &egui::Context, language: &str, names: Scripts) {
 
 /// [`language_fonts`] for `language`, read once: installing again for another name's script or
 /// when faces finish loading reuses them (a clone shares their `Arc`s) instead of reading the UI
-/// and CJK font files on the UI thread again. A new language reads its own.
+/// and CJK font files on the UI thread again. Only the last language is kept, so trying several
+/// interface languages doesn't keep a copy of the large font files for each. Fonts are installed
+/// on the UI thread, so the entry is that thread's.
 fn cached_language_fonts(language: &str) -> egui::FontDefinitions {
-    static READ: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, egui::FontDefinitions>>> = std::sync::OnceLock::new();
-    let mut read = READ.get_or_init(Default::default).lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    read.entry(language.to_string()).or_insert_with(|| language_fonts(language)).clone()
+    thread_local! {
+        static READ: std::cell::RefCell<Option<(String, egui::FontDefinitions)>> = const { std::cell::RefCell::new(None) };
+    }
+    READ.with_borrow_mut(|read| match read {
+        Some((l, fonts)) if l == language => fonts.clone(),
+        _ => {
+            let fonts = language_fonts(language);
+            *read = Some((language.to_string(), fonts.clone()));
+            fonts
+        }
+    })
 }
 
 #[cfg(test)]
@@ -555,7 +565,8 @@ fn name_faces(
     primary: Option<std::sync::Arc<egui::FontData>>,
 ) -> Vec<(String, std::sync::Arc<egui::FontData>)> {
     let mut needed = names;
-    if language == "ko" || cjk_covers_hangul() {
+    // Hangul first: the first `cjk_covers_hangul` reads the whole CJK collection.
+    if needed.contains(Scripts::HANGUL) && (language == "ko" || cjk_covers_hangul()) {
         needed = needed.without(Scripts::HANGUL);
     }
     if language == "ar" {
