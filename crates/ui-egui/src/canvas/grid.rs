@@ -1,5 +1,5 @@
 use super::draw::clip_infinite;
-use super::{Bounds2, CadApp, Shape, Stroke, Tokens, Vec2, Xf, pos2};
+use super::{CadApp, Shape, Stroke, Tokens, Vec2, Xf};
 
 /// Grid spacing adapted to the zoom: multiply the unit until lines are at least `min_px` apart.
 fn adaptive(unit: f64, scale: f64, min_px: f64) -> f64 {
