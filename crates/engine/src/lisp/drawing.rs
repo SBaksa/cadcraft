@@ -8,16 +8,17 @@
 //! for angles, which are radians in a list and degrees in a file.
 
 use std::collections::HashMap;
+
 use std::sync::{Arc, Mutex};
 
 use cadcraft_doc::{Entity, Handle, Space};
 use cadcraft_dxf::Tag;
 use cadcraft_geom::Vec2;
 
-use super::LispError;
 use super::builtins::args_err;
 use super::eval::{Ctx, Flow, Need};
 use super::value::{PickSet, Value, to_text};
+use super::{BlockSlots, LispError};
 use crate::{Input, Session};
 
 fn arity(a: &[Value], min: usize, max: usize) -> Result<(), LispError> {
@@ -318,14 +319,14 @@ fn space_of(d: &cadcraft_doc::Drawing, h: Handle) -> Option<Space> {
 pub fn entget(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
     arity(&a, 1, 2)?;
     let h = ename(&a[0])?;
+    let drawn = ctx.s.doc().is_ok_and(|d| d.entity(h).is_some());
+    let from_block = if drawn { None } else { block_entity(ctx, h) };
     let Ok(d) = ctx.s.doc() else { return Ok(Flow::Value(Value::Nil)) };
     // An entity of a block definition (#1700) has no layout.
-    let (e, in_block) = match d.entity(h) {
-        Some(e) => (e, false),
-        None => match block_entity(d, h) {
-            Some(e) => (e, true),
-            None => return Ok(Flow::Value(Value::Nil)),
-        },
+    let (e, in_block) = match (d.entity(h), &from_block) {
+        (Some(e), _) => (e, false),
+        (None, Some(e)) => (e, true),
+        (None, None) => return Ok(Flow::Value(Value::Nil)),
     };
     let (kind, mut tags) = (codec()?.groups)(d, e);
     convert_angles(&kind, &mut tags, f64::to_radians);
@@ -547,10 +548,11 @@ fn handles_in_order(ctx: &mut Ctx<'_>) -> Arc<Vec<Handle>> {
     v
 }
 
-/// Every block-definition entity's successor within its block, cached per drawing like
-/// [`handles_in_order`]: one pass over the blocks, then `entnext` is a hash lookup instead of a
-/// scan of the block (and of every block, to find which holds the entity).
-fn block_successors(ctx: &mut Ctx<'_>) -> Arc<HashMap<Handle, Option<Handle>>> {
+/// Every block-definition entity with its successor within its block, cached per drawing like
+/// [`handles_in_order`]: one pass over the blocks, then `entnext`, `entget` and `handent` on a
+/// block's entity are hash lookups instead of scans of the block (and of every block, to find
+/// which holds the entity).
+fn block_slots(ctx: &mut Ctx<'_>) -> Arc<BlockSlots> {
     let Ok(st) = ctx.s.state() else { return Arc::default() };
     let key = Arc::as_ptr(&st.doc) as usize;
     if let Some((k, v)) = &ctx.env.block_next
@@ -560,9 +562,9 @@ fn block_successors(ctx: &mut Ctx<'_>) -> Arc<HashMap<Handle, Option<Handle>>> {
     }
     let mut m = HashMap::new();
     for b in st.doc.blocks.values() {
-        let mut it = b.entities.iter().map(|e| e.handle).peekable();
-        while let Some(h) = it.next() {
-            m.insert(h, it.peek().copied());
+        let mut it = b.entities.iter().peekable();
+        while let Some(e) = it.next() {
+            m.insert(e.handle, (e.clone(), it.peek().map(|n| n.handle)));
         }
     }
     let m = Arc::new(m);
@@ -581,7 +583,7 @@ pub fn entnext(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
     if let Some(v) = a.first().filter(|v| !v.is_nil()) {
         let h = ename(v)?;
         if ctx.s.doc().is_ok_and(|d| d.entity(h).is_none())
-            && let Some(next) = block_successors(ctx).get(&h)
+            && let Some((_, next)) = block_slots(ctx).get(&h)
         {
             return Ok(Flow::Value(next.map(Value::Ename).unwrap_or_default()));
         }
@@ -601,21 +603,13 @@ pub fn entnext(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
 pub fn handent(ctx: &mut Ctx<'_>, a: Vec<Value>) -> Result<Flow, LispError> {
     arity(&a, 1, 1)?;
     let s = string(&a[0])?;
-    let h = Handle::parse_hex(&s).filter(|h| ctx.s.doc().is_ok_and(|d| d.entity(*h).is_some() || block_entity(d, *h).is_some()));
+    let h = Handle::parse_hex(&s).filter(|h| ctx.s.doc().is_ok_and(|d| d.entity(*h).is_some()) || block_entity(ctx, *h).is_some());
     Ok(Flow::Value(h.map(Value::Ename).unwrap_or_default()))
 }
 
-/// The block definition holding entity `h`, when it is one of a block's (not a drawn entity).
-fn block_of(d: &cadcraft_doc::Drawing, h: Handle) -> Option<&cadcraft_doc::Block> {
-    if h == Handle(0) {
-        return None;
-    }
-    d.blocks.values().map(|b| b.as_ref()).find(|b| b.entities.get(h).is_some())
-}
-
-/// Entity `h` of a block definition (#1700).
-fn block_entity(d: &cadcraft_doc::Drawing, h: Handle) -> Option<&Arc<Entity>> {
-    block_of(d, h).and_then(|b| b.entities.get(h))
+/// Entity `h` of a block definition (#1700), by the cached index.
+fn block_entity(ctx: &mut Ctx<'_>, h: Handle) -> Option<Arc<Entity>> {
+    block_slots(ctx).get(&h).map(|(e, _)| e.clone())
 }
 
 // ---------------- selection sets ----------------
