@@ -298,6 +298,55 @@ fn block_definition_properties_and_constant_attdefs_roundtrip() {
     assert_eq!((p.description.as_str(), p.units, p.explodable), ("", 0, true));
 }
 
+/// An attached ATTRIB keeps its constant flag (group 70 bit 2) through DXF and DWG (#2246).
+#[test]
+fn attached_constant_attribute_roundtrips() {
+    let mut d = Drawing::new_metric();
+    let text = Text {
+        insert: Vec3::ZERO,
+        align_pt: None,
+        height: 2.5,
+        value: "V".into(),
+        rotation: 0.0,
+        width_factor: 1.0,
+        oblique: 0.0,
+        style: "Standard".into(),
+        halign: HAlign::Left,
+        valign: VAlign::Baseline,
+    };
+    let attrib = |tag: &str, constant: bool| Attrib {
+        tag: tag.into(),
+        text: text.clone(),
+        invisible: false,
+        constant,
+        prompt: String::new(),
+        props: Default::default(),
+        multiline: None,
+        modes: Default::default(),
+    };
+    let mut b = Block::new("CB");
+    b.entities.push(Entity::new(Handle(0x50), EntityKind::AttDef(attrib("A", true))));
+    b.entities.push(Entity::new(Handle(0x51), EntityKind::AttDef(attrib("B", false))));
+    d.blocks.insert("CB".into(), std::sync::Arc::new(b));
+    let insert = Insert {
+        block: "CB".into(),
+        insert: Vec3::ZERO,
+        scale: Vec3::new(1.0, 1.0, 1.0),
+        rotation: 0.0,
+        attribs: vec![attrib("A", true), attrib("B", false)],
+        cols: 1,
+        rows: 1,
+        col_spacing: 0.0,
+        row_spacing: 0.0,
+    };
+    d.add(&Space::Model, Common::default(), EntityKind::Insert(insert)).unwrap();
+    let dwg = write(&d, "t.dwg").unwrap();
+    for (what, back) in [("DXF", roundtrip(&d)), ("DWG", read(&dwg, "t.dwg").unwrap())] {
+        let ins = first(&back, |k| if let EntityKind::Insert(i) = k { Some(i.clone()) } else { None });
+        let flags: Vec<(String, bool)> = ins.attribs.iter().map(|a| (a.tag.clone(), a.constant)).collect();
+        assert_eq!(flags, [("A".to_string(), true), ("B".to_string(), false)], "{what}");
+    }
+}
 #[test]
 fn reads_r12_style_polyline_and_paper_flag() {
     let text = "0\nSECTION\n2\nENTITIES\n0\nPOLYLINE\n8\n0\n66\n1\n70\n1\n0\nVERTEX\n8\n0\n10\n0\n20\n0\n0\nVERTEX\n8\n0\n10\n5\n20\n0\n42\n1\n0\nVERTEX\n8\n0\n10\n5\n20\n5\n0\nSEQEND\n0\nLINE\n67\n1\n8\n0\n10\n0\n20\n0\n11\n1\n21\n1\n0\nENDSEC\n0\nEOF\n";
