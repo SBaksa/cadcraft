@@ -517,8 +517,9 @@ mod native {
     /// the document, so the drawing reopened with layer "0" current (#2252).
     fn current_layer(doc: &mut acadrust::CadDocument) {
         let name = doc.header.current_layer_name.clone();
-        if let Some(h) = doc.layers.iter().find(|l| l.name.eq_ignore_ascii_case(&name)).map(|l| l.handle) {
-            doc.header.current_layer_handle = h;
+        // The table's own lookup compares Unicode case-insensitively ("Survey_Ä" = "Survey_ä").
+        if let Some(layer) = doc.layers.get(&name) {
+            doc.header.current_layer_handle = layer.handle;
         }
     }
 
