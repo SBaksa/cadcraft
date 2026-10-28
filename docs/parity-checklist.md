@@ -1,10 +1,10 @@
 # Parity checklist
 
-> **Generated:** 2026-10-27 by `cargo xtask parity`. Do not edit by hand.
+> **Generated:** 2026-10-25 by `cargo xtask parity`. Do not edit by hand.
 
 Menu-breadth parity: a reference menu item counts as covered when a CADCraft command is registered under the same menu label. It measures breadth, not depth; see [target-app-parity.md](target-app-parity.md) for the weighted assessment.
 
-**Menu breadth: 303 / 491 items (62%)** · 448 registered commands.
+**Menu breadth: 297 / 491 items (60%)** · 442 registered commands.
 
 | Menu | Items | Covered | % |
 |---|---|---|---|
@@ -13,10 +13,10 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 | View | 75 | 37 | 49% |
 | Insert | 11 | 5 | 45% |
 | Format | 27 | 26 | 96% |
-| Tools | 85 | 71 | 84% |
-| Draw | 87 | 56 | 64% |
+| Tools | 85 | 66 | 78% |
+| Draw | 87 | 55 | 63% |
 | Dimension | 28 | 28 | 100% |
-| Modify | 113 | 52 | 46% |
+| Modify | 113 | 53 | 47% |
 | Window | 22 | 3 | 14% |
 | Help | 8 | 0 | 0% |
 
@@ -37,7 +37,6 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - View > Orbit > Free Orbit
 - View > Camera > Adjust Distance
 - View > Camera > Swivel
-- View > Viewports > Named Viewports...
 - View > 3D Views > Viewpoint
 - View > 3D Views > Plan View > Current UCS
 - View > 3D Views > Plan View > World UCS
@@ -66,6 +65,7 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - View > Render > Light > New Distant Light
 - View > Render > Light > Light Glyphs
 - View > Render > Materials Browser
+- View > UCS Icon > Origin
 - View > UCS Icon > Properties...
 - View > ViewCube > Settings
 - View > Lights
@@ -80,10 +80,15 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Tools > Spelling
 - Tools > Update Fields
 - Tools > Edit Xref in Place
+- Tools > New UCS > World
 - Tools > New UCS > Face
+- Tools > New UCS > View
+- Tools > New UCS > Origin
 - Tools > New UCS > Z Axis Vector
+- Tools > New UCS > 3 Point
 - Tools > New UCS > X
 - Tools > New UCS > Y
+- Tools > New UCS > Z
 - Tools > Named UCS...
 - Tools > Customize > Interface (CUI)...
 - Tools > Import Settings
@@ -121,13 +126,13 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Draw > 3D Modeling > Meshes > Meshes, Ruled Surface
 - Draw > 3D Modeling > Meshes > Meshes, Edge Surface
 - Draw > 3D Modeling > Setup > Drawing
+- Draw > 3D Modeling > Setup > View
 - Draw > 3D Modeling > Setup > Profile
 - Modify > Object > External Reference > Frame
 - Modify > Object > Image > Adjust...
 - Modify > Object > Image > Quality
 - Modify > Object > Image > Transparency
 - Modify > Object > Image > Frame
-- Modify > Object > Block Description...
 - Modify > Clip > Image
 - Modify > Clip > Xref
 - Modify > 3D Operations > 3D Move
