@@ -334,6 +334,7 @@ fn serve(stream: TcpStream, tx: &SyncSender<ControlRequest>, ctx: &egui::Context
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     /// A failed accept is followed by a wait before the next one, so a listener that keeps
     /// failing does not spin, and the connections around the failures still come through.
