@@ -104,10 +104,7 @@ mod native {
         }
         let mut notes = read_notes(&outcome.stats);
         let mut doc = outcome.document;
-        current_style_names(&mut doc);
-        table_merges(&mut doc);
-        table_style_rows(&mut doc, false);
-        let orphans = drop_orphaned_dgn_components(&mut doc);
+        let orphans = guarded(AssertUnwindSafe(|| post_process(&mut doc))).map_err(|_| "the DWG post-processing failed on this file".to_string())?;
         if orphans > 0 {
             let (s, were) = if orphans == 1 { ("", "was") } else { ("s", "were") };
             notes.push(format!("DWG: {orphans} DGN line style component{s} that no line style definition uses {were} left out"));
@@ -237,6 +234,31 @@ mod native {
     /// cells already carry merges are left alone. Each range's first cell gets the span; the
     /// cells it covers are marked merged with no span of their own, as CADCraft's DXF writer does.
     fn table_merges(doc: &mut acadrust::CadDocument) {
+        table_merges_within(doc, MAX_MERGE_CELLS);
+    }
+
+    /// The most table cells [`table_merges`] visits in one document: each range is capped, but
+    /// can cover rows × cols cells, so the total is bounded too.
+    const MAX_MERGE_CELLS: usize = 1 << 24;
+
+    /// The fix-ups made to a document after the DWG read, returning how many orphaned DGN
+    /// components were dropped. The document comes from a third-party reader and is hostile.
+    fn post_process(doc: &mut acadrust::CadDocument) -> usize {
+        current_style_names(doc);
+        table_merges(doc);
+        table_style_rows(doc, false);
+        drop_orphaned_dgn_components(doc)
+    }
+
+    /// Runs `f`, turning a panic into an error (the reader and writer are guarded the same way).
+    fn guarded<R>(f: impl FnOnce() -> R + std::panic::UnwindSafe) -> Result<R, ()> {
+        std::panic::catch_unwind(f).map_err(|_| ())
+    }
+
+    /// [`table_merges`] visiting at most `budget` cells in all; a range that would pass it is
+    /// left unmerged. Returns the cells visited.
+    fn table_merges_within(doc: &mut acadrust::CadDocument, budget: usize) -> usize {
+        let mut left = budget;
         for e in doc.entities_mut() {
             let acadrust::entities::EntityType::Table(t) = e else { continue };
             if t.merged_ranges.is_empty() || t.rows.iter().flat_map(|r| &r.cells).any(|c| c.merge_width > 1 || c.merge_height > 1) {
@@ -252,6 +274,11 @@ mod native {
                 if r.top_row > bottom || r.left_col > right || rows == 0 || cols == 0 || (r.top_row, r.left_col) == (bottom, right) {
                     continue;
                 }
+                let area = (bottom - r.top_row + 1).saturating_mul(right - r.left_col + 1);
+                if area > left {
+                    continue;
+                }
+                left -= area;
                 let span = |n: usize| i32::try_from(n + 1).unwrap_or(i32::MAX);
                 for (ri, row) in t.rows.iter_mut().enumerate().take(bottom + 1).skip(r.top_row) {
                     for (ci, cell) in row.cells.iter_mut().enumerate().take(right + 1).skip(r.left_col) {
@@ -263,6 +290,7 @@ mod native {
                 }
             }
         }
+        budget - left
     }
 
     /// Table styles' title and header suppression between the two places acadrust 0.6.3 keeps
@@ -637,6 +665,38 @@ mod native {
             if others.contains(&c.owner_handle) {
                 c.entity_mode = Some(0);
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod post_tests {
+        use super::*;
+        use acadrust::entities::{CellRange, EntityType, Table};
+
+        fn doc_with_table(rows: usize, cols: usize, ranges: usize) -> acadrust::CadDocument {
+            let mut t = Table::new(acadrust::types::Vector3::new(0.0, 0.0, 0.0), rows, cols);
+            t.merged_ranges = (0..ranges).map(|_| CellRange::new(0, 0, rows - 1, cols - 1)).collect();
+            let mut doc = acadrust::CadDocument::new();
+            assert!(doc.add_entity(EntityType::Table(Box::new(t))).is_ok());
+            doc
+        }
+
+        /// Overlapping whole-table ranges can't make the merge pass visit more than its budget (#1934).
+        #[test]
+        fn merge_work_is_bounded_by_the_cell_budget() {
+            let mut doc = doc_with_table(10, 10, 50);
+            assert_eq!(table_merges_within(&mut doc, 250), 200, "two whole-table ranges fit, the rest are skipped");
+            let mut doc = doc_with_table(10, 10, 1);
+            assert_eq!(table_merges_within(&mut doc, usize::MAX), 100);
+        }
+
+        /// A panic in the post-read fix-ups is an error, not a crash (#1934).
+        #[test]
+        fn a_panic_in_post_processing_is_an_error() {
+            #[allow(clippy::panic)]
+            let r = guarded(AssertUnwindSafe(|| -> usize { panic!("boom") }));
+            assert!(r.is_err());
+            assert_eq!(guarded(|| 3), Ok(3));
         }
     }
 }
