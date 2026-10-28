@@ -257,3 +257,15 @@ fn marks_follow_move_and_rotate_and_hostile_values_do_not_panic() {
     .unwrap();
     let _ = dim_of(&s, &h);
 }
+
+/// A dimension made in the session reports its measurement at once, not 0.0 until it is saved
+/// and reopened (#2421).
+#[test]
+fn a_new_dimension_reports_its_measurement() {
+    let mut s = Session::new();
+    let measurement = |s: &Session, h: &str| dim_of(s, h).0.measurement;
+    let horizontal = handle(&s.execute("dimlinear", &json!({ "p1": [0, 0], "p2": [100, 0], "at": [50, 20] })).unwrap());
+    assert!((measurement(&s, &horizontal) - 100.0).abs() < 1e-9, "{}", measurement(&s, &horizontal));
+    let vertical = handle(&s.execute("dimlinear", &json!({ "p1": [0, 0], "p2": [0, 37.5], "at": [-10, 20] })).unwrap());
+    assert!((measurement(&s, &vertical) - 37.5).abs() < 1e-9, "{}", measurement(&s, &vertical));
+}

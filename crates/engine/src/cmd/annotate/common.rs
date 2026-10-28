@@ -48,6 +48,14 @@ pub(super) fn add_dim(s: &mut Session, k: EntityKind) -> Result<Handle> {
     {
         dm.assoc = crate::assoc::reassociate(s.doc()?, &s.space(), dm);
     }
+    // The measurement is what the DXF/DWG writer computes from the geometry (group 42); filling it
+    // in now means queries show it before the drawing is saved and reopened (#2421).
+    if let EntityKind::Dimension(dm) = &mut k
+        && let Ok(d) = s.doc()
+    {
+        let style = d.dim_style(&dm.style).cloned().unwrap_or_default();
+        dm.measurement = cadcraft_render::dimension_geometry(dm, &style, d.header.f64("DIMSCALE", 1.0)).measurement;
+    }
     let h = s.add_entity(k)?;
     s.last_dim = Some(h);
     Ok(h)
