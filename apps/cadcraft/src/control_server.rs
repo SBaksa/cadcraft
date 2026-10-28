@@ -7,7 +7,7 @@
 //! ([`Limits`]): simultaneous connections, request line length, queued requests, and how long a
 //! socket may sit idle or blocked on a write.
 
-use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
