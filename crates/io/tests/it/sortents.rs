@@ -50,6 +50,10 @@ fn broken_sortentstables_are_ignored() {
 /// A block whose SORTENTSTABLE leaves out the circle (it sorts by its own handle) draws the
 /// wipeout, the circle, then the two lines (#2410).
 fn block_dxf() -> String {
+    block_dxf_with("331\n25B\n5\n25D\n331\n25D\n5\n25E\n331\n25E\n5\n25B\n")
+}
+
+fn block_dxf_with(entries: &str) -> String {
     let rec = |h: &str, n: &str| format!("0\nBLOCK_RECORD\n5\n{h}\n2\n{n}\n");
     let mut s = String::from("0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nBLOCK_RECORD\n");
     s.push_str(&rec("1F", "*Model_Space"));
@@ -65,7 +69,8 @@ fn block_dxf() -> String {
         "10\n0\n20\n0\n30\n0\n11\n1\n21\n0\n31\n0\n12\n0\n22\n1\n32\n0\n14\n-0.5\n24\n-0.5\n14\n9.5\n24\n-0.5\n14\n9.5\n24\n9.5\n14\n-0.5\n24\n9.5\n",
     ));
     s.push_str("0\nENDBLK\n5\n2C\n330\n2A\n8\n0\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nSECTION\n2\nOBJECTS\n");
-    s.push_str("0\nSORTENTSTABLE\n5\nB0\n330\nB1\n100\nAcDbSortentsTable\n330\n2A\n331\n25B\n5\n25D\n331\n25D\n5\n25E\n331\n25E\n5\n25B\n");
+    s.push_str("0\nSORTENTSTABLE\n5\nB0\n330\nB1\n100\nAcDbSortentsTable\n330\n2A\n");
+    s.push_str(entries);
     s.push_str("0\nENDSEC\n0\nEOF\n");
     s
 }
@@ -106,4 +111,16 @@ fn a_partial_block_table_survives_the_dwg_bridge() {
     let dxf = cadcraft_dwg::dwg_to_dxf(&dwg).unwrap();
     let d = cadcraft_io::read_dxf(&dxf).unwrap();
     assert_eq!(block_kinds(&d), ["wipeout", "circle", "hline", "vline"]);
+}
+
+/// A sort handle of 0 draws the entity last, in a DXF and across the DWG bridge (#2439).
+#[test]
+fn a_zero_sort_handle_draws_last() {
+    // The horizontal line is keyed 0 (last); the vertical line 25E; the wipeout 25B; the circle its own 25C.
+    let dxf = block_dxf_with("331\n25B\n5\n0\n331\n25D\n5\n25E\n331\n25E\n5\n25B\n");
+    let want = ["wipeout", "circle", "vline", "hline"];
+    assert_eq!(block_kinds(&cadcraft_io::read_dxf(dxf.as_bytes()).unwrap()), want, "DXF");
+    let dwg = cadcraft_dwg::dxf_to_dwg(dxf.as_bytes()).unwrap();
+    let back = cadcraft_io::read_dxf(&cadcraft_dwg::dwg_to_dxf(&dwg).unwrap()).unwrap();
+    assert_eq!(block_kinds(&back), want, "DWG");
 }
