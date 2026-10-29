@@ -244,6 +244,7 @@ mod native {
     /// The fix-ups made to a document after the DWG read, returning how many orphaned DGN
     /// components were dropped. The document comes from a third-party reader and is hostile.
     fn post_process(doc: &mut acadrust::CadDocument) -> usize {
+        super::fail_in_test("post_process");
         current_style_names(doc);
         table_merges(doc);
         table_style_rows(doc, false);
@@ -564,13 +565,18 @@ mod native {
             None if doc.version < MIN_DWG_VERSION => doc.version = MIN_DWG_VERSION,
             None => {}
         }
-        other_layout_owners(&mut doc);
-        table_style_rows(&mut doc, true);
-        dimension_flags(&mut doc);
-        drop_unwritable(&mut doc);
-        current_dimstyle(&mut doc);
-        add_variable_dictionary(&mut doc);
-        current_text_style(&mut doc);
+        // The fix-ups run on the third-party reader's document, so a panic in one is an error, not a crash.
+        guarded(AssertUnwindSafe(|| {
+            super::fail_in_test("convert");
+            other_layout_owners(&mut doc);
+            table_style_rows(&mut doc, true);
+            dimension_flags(&mut doc);
+            drop_unwritable(&mut doc);
+            current_dimstyle(&mut doc);
+            add_variable_dictionary(&mut doc);
+            current_text_style(&mut doc);
+        }))
+        .map_err(|_| "the DXF to DWG conversion failed on this file".to_string())?;
         std::panic::catch_unwind(AssertUnwindSafe(|| acadrust::DwgWriter::write_to_vec(&doc)))
             .map_err(|_| "the DWG writer failed on this drawing".to_string())?
             .map_err(|e| format!("DWG write: {e}"))
@@ -704,6 +710,23 @@ mod native {
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::{dwg_to_dxf, dwg_to_dxf_noted, dwg_to_dxf_with, dxf_to_dwg, dxf_to_dwg_as};
 
+// Test-only: the stage ("post_process" or "convert") whose guard the current test checks. The
+// stage then panics on entry, so a test through the public API shows whether it is guarded.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+thread_local! {
+    static PANIC_IN: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
+
+/// Panics when a test asked for `stage` to fail (see [`PANIC_IN`]); does nothing otherwise.
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::panic)]
+fn fail_in_test(_stage: &str) {
+    #[cfg(test)]
+    if PANIC_IN.with(|p| p.get()) == Some(_stage) {
+        panic!("test-forced panic in {_stage}");
+    }
+}
+
 /// The error for a DWG version CADCraft can't write.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 fn unsupported(version: &str) -> String {
@@ -735,6 +758,46 @@ pub fn dxf_to_dwg_as(_dxf: &[u8], _version: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The DXF of an empty drawing, enough for the bridge to make a small DWG.
+    const MINIMAL_DXF: &str = "  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1032\n  0\nENDSEC\n  0\nEOF\n";
+
+    /// Makes `stage` panic on the current thread until dropped.
+    struct PanicIn;
+
+    impl PanicIn {
+        fn at(stage: &'static str) -> Self {
+            PANIC_IN.with(|p| p.set(Some(stage)));
+            Self
+        }
+    }
+
+    impl Drop for PanicIn {
+        fn drop(&mut self) {
+            PANIC_IN.with(|p| p.set(None));
+        }
+    }
+
+    /// The public read reports a panic in the post-read fix-ups as an error: this fails if the
+    /// `guarded` call around `post_process` is taken out (#2402).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn reading_a_dwg_survives_a_panic_in_post_processing() {
+        let dwg = dxf_to_dwg(MINIMAL_DXF.as_bytes()).unwrap();
+        assert!(dwg_to_dxf(&dwg).is_ok(), "the DWG reads without the forced panic");
+        let _panic = PanicIn::at("post_process");
+        let err = dwg_to_dxf(&dwg).unwrap_err();
+        assert!(err.contains("the DWG post-processing failed on this file"), "{err}");
+    }
+
+    /// The DXF to DWG conversion reports a panic in its fix-ups as an error, not a crash (#2402).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn converting_to_dwg_survives_a_panic_in_the_fix_ups() {
+        let _panic = PanicIn::at("convert");
+        let err = dxf_to_dwg(MINIMAL_DXF.as_bytes()).unwrap_err();
+        assert!(err.contains("the DXF to DWG conversion failed on this file"), "{err}");
+    }
 
     #[test]
     fn detects_magic() {
