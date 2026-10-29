@@ -99,6 +99,7 @@ fn jogged_radius() {
     let (dm, g) = dim_of(&s, &h);
     let j = dm.marks.jogged.clone().unwrap();
     assert_eq!(g.value, "R50.0000", "the true radius");
+    assert!((dm.measurement - 50.0).abs() < 1e-9, "the stored measurement is the radius, got {} (#2421)", dm.measurement);
     assert!(j.center.xy().dist(Vec2::new(20.0, -10.0)) < 1e-9);
     // The line runs from the arrowhead on the circle to the override, with a 45° jog (DIMJOGANG).
     let tip = Vec2::new(1.0, 1.0).normalized() * 50.0;
