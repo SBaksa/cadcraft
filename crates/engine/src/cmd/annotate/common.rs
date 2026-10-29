@@ -54,7 +54,12 @@ pub(super) fn add_dim(s: &mut Session, k: EntityKind) -> Result<Handle> {
         && let Ok(d) = s.doc()
     {
         let style = d.dim_style(&dm.style).cloned().unwrap_or_default();
-        dm.measurement = cadcraft_render::dimension_geometry(dm, &style, d.header.f64("DIMSCALE", 1.0)).measurement;
+        let g = cadcraft_render::dimension_geometry(dm, &style, d.header.f64("DIMSCALE", 1.0));
+        dm.measurement = g.measurement;
+        // The text position the writer puts in group 11 when the user has not placed the text.
+        if !dm.user_text_pos {
+            dm.text_mid = g.text_pos.to3(0.0);
+        }
     }
     let h = s.add_entity(k)?;
     s.last_dim = Some(h);

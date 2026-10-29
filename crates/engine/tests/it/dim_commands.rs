@@ -270,3 +270,17 @@ fn a_new_dimension_reports_its_measurement() {
     let vertical = handle(&s.execute("dimlinear", &json!({ "p1": [0, 0], "p2": [0, 37.5], "at": [-10, 20] })).unwrap());
     assert!((measurement(&s, &vertical) - 37.5).abs() < 1e-9, "{}", measurement(&s, &vertical));
 }
+
+/// A new dimension's text position is known at once, as it is after save and reopen (#2421).
+#[test]
+fn a_new_dimension_reports_its_text_position() {
+    let mut s = Session::new();
+    let horizontal = handle(&s.execute("dimlinear", &json!({ "p1": [0, 0], "p2": [100, 0], "at": [50, 20] })).unwrap());
+    let vertical = handle(&s.execute("dimlinear", &json!({ "p1": [0, 0], "p2": [0, 37.5], "at": [-20, 18] })).unwrap());
+    for h in [&horizontal, &vertical] {
+        let (dm, g) = dim_of(&s, h);
+        assert!(dm.text_mid.xy().dist(g.text_pos) < 1e-9, "stored {:?}, drawn at {:?}", dm.text_mid, g.text_pos);
+        assert!(dm.text_mid.xy().dist(Vec2::ZERO) > 1.0, "still at the origin: {:?}", dm.text_mid);
+    }
+    assert!((dim_of(&s, &horizontal).0.text_mid.x - 50.0).abs() < 1e-9);
+}
