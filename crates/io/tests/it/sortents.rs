@@ -124,3 +124,18 @@ fn a_zero_sort_handle_draws_last() {
     let back = cadcraft_io::read_dxf(&cadcraft_dwg::dwg_to_dxf(&dwg).unwrap()).unwrap();
     assert_eq!(block_kinds(&back), want, "DWG");
 }
+
+/// Two entities left out of the table each sort by their own handle, so they land between the
+/// listed ones (a single fallback key for every unlisted entity would put them side by side)
+/// in a DXF and across the DWG bridge (#2439).
+#[test]
+fn two_unlisted_block_entities_each_sort_by_their_own_handle() {
+    // Listed: the horizontal line 25B and the vertical line 25D, each under its own handle.
+    // Unlisted: the circle 25C and the wipeout 25E.
+    let dxf = block_dxf_with("331\n25B\n5\n25B\n331\n25D\n5\n25D\n");
+    let want = ["hline", "circle", "vline", "wipeout"];
+    assert_eq!(block_kinds(&cadcraft_io::read_dxf(dxf.as_bytes()).unwrap()), want, "DXF");
+    let dwg = cadcraft_dwg::dxf_to_dwg(dxf.as_bytes()).unwrap();
+    let back = cadcraft_io::read_dxf(&cadcraft_dwg::dwg_to_dxf(&dwg).unwrap()).unwrap();
+    assert_eq!(block_kinds(&back), want, "DWG");
+}
