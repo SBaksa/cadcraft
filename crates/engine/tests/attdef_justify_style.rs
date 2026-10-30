@@ -135,3 +135,82 @@ fn the_definition_takes_the_styles_width_factor_and_oblique() {
     let a = add(&mut s, json!({"tag": "T", "at": [0, 0], "style": "Standard"}));
     assert_eq!((a.text.width_factor, a.text.oblique), (1.0, 0.0));
 }
+
+/// `-ATTDEF` typed at the command line: tag, prompt and default, then the start-point prompt.
+fn typed_to_start_point(s: &mut Session) {
+    s.cmdline("-attdef").unwrap();
+    for line in ["TAG", "Prompt", "Default"] {
+        s.cmdline(line).unwrap();
+    }
+}
+
+fn last_attdef(s: &Session) -> Attrib {
+    let e = s.doc().unwrap().model.iter().filter(|e| matches!(e.kind, EntityKind::AttDef(_))).last().unwrap();
+    attdef(s, e.handle)
+}
+
+#[test]
+fn the_start_point_prompt_offers_justify_and_style() {
+    let mut s = session();
+    typed_to_start_point(&mut s);
+    assert!(s.prompt_text().contains("Specify start point of text or [Justify/Style]"), "{}", s.prompt_text());
+}
+
+#[test]
+fn typed_justify_then_a_point_justifies_the_definition() {
+    let mut s = session();
+    typed_to_start_point(&mut s);
+    s.cmdline("J").unwrap();
+    assert!(s.prompt_text().contains("Enter an option"), "{}", s.prompt_text());
+    s.cmdline("MC").unwrap();
+    assert!(s.prompt_text().contains("Specify start point of text"), "{}", s.prompt_text());
+    s.cmdline("10,10").unwrap();
+    assert!(s.running.is_none(), "{}", s.prompt_text());
+    let a = last_attdef(&s);
+    assert_eq!((a.text.halign, a.text.valign), (HAlign::Center, VAlign::Middle));
+    assert_eq!(a.text.align_pt, Some(Vec3::new(10.0, 10.0, 0.0)), "stored as the JSON form does");
+}
+
+#[test]
+fn typed_justify_refuses_align_fit_and_unknown_codes_and_asks_again() {
+    let mut s = session();
+    typed_to_start_point(&mut s);
+    s.cmdline("J").unwrap();
+    for bad in ["A", "Fit", "XX"] {
+        s.cmdline(bad).unwrap();
+        assert!(s.log.iter().any(|l| l.contains("justification") || l.contains("Align and Fit")), "{bad}: {:?}", s.log);
+        s.log.clear();
+        assert!(s.prompt_text().contains("Enter an option"), "{bad}: {}", s.prompt_text());
+    }
+    s.cmdline("TR").unwrap();
+    s.cmdline("0,0").unwrap();
+    let a = last_attdef(&s);
+    assert_eq!((a.text.halign, a.text.valign), (HAlign::Right, VAlign::Top));
+}
+
+#[test]
+fn typed_style_then_a_point_takes_the_styles_values() {
+    let mut s = session();
+    s.execute("style", &json!({"name": "SLANT", "font": "romans.shx", "widthFactor": 0.7, "oblique": 15, "current": false})).unwrap();
+    typed_to_start_point(&mut s);
+    s.cmdline("S").unwrap();
+    assert!(s.prompt_text().contains("Enter style name"), "{}", s.prompt_text());
+    s.cmdline("slant").unwrap();
+    s.cmdline("0,0").unwrap();
+    let a = last_attdef(&s);
+    assert_eq!(a.text.style, "SLANT");
+    assert!((a.text.width_factor - 0.7).abs() < 1e-12 && (a.text.oblique - 15f64.to_radians()).abs() < 1e-12);
+}
+
+#[test]
+fn typed_style_that_does_not_exist_asks_again() {
+    let mut s = session();
+    typed_to_start_point(&mut s);
+    s.cmdline("S").unwrap();
+    s.cmdline("NOPE").unwrap();
+    assert!(s.log.iter().any(|l| l.contains("no text style \"NOPE\"")), "{:?}", s.log);
+    assert!(s.prompt_text().contains("Enter style name"), "{}", s.prompt_text());
+    s.cmdline("ROMANS").unwrap();
+    s.cmdline("0,0").unwrap();
+    assert_eq!(last_attdef(&s).text.style, "ROMANS");
+}

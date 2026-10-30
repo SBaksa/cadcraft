@@ -329,6 +329,22 @@ fn current_style_values(s: &Session) -> (String, f64, f64) {
     style_values(s, &name).ok().flatten().unwrap_or((name, 1.0, 0.0))
 }
 
+/// A justification code as `-ATTDEF` takes it, typed or in `justify`. Align and Fit run between
+/// two baseline points; `attdef` has one, so it can't express them.
+fn attdef_justify(code: &str) -> Result<(HAlign, VAlign)> {
+    let j = super::draw::justify(code.trim()).ok_or_else(|| bad("attdef", "unknown justification"))?;
+    if matches!(j.0, HAlign::Aligned | HAlign::Fit) {
+        return Err(bad("attdef", "Align and Fit need two points, which attdef doesn't take yet; use L, C, R, M or TL … BR"));
+    }
+    Ok(j)
+}
+
+/// The named text style with its width factor and oblique angle, or the error both the JSON form
+/// and the typed `Style` option give for a style the drawing doesn't have.
+fn resolve_style(s: &Session, name: &str) -> Result<(String, f64, f64)> {
+    style_values(s, name)?.ok_or_else(|| bad("attdef", format!("no text style \"{name}\"")))
+}
+
 /// An optional string parameter: absent or null is `None`, a string is `Some`, anything else is
 /// an error rather than being ignored.
 fn opt_str_param<'a>(cmd: &str, p: &'a Value, key: &str) -> Result<Option<&'a str>> {
@@ -386,13 +402,9 @@ fn run_attdef(s: &mut Session, p: &Value) -> Result<Value> {
     let at = point_req("attdef", p, "at")?;
     let h = f64_or(p, "height", s.doc()?.header.f64("TEXTSIZE", 0.2));
     // Justification and text style as TEXT and MTEXT take them (#1658).
-    let j = super::draw::justify(opt_str_param("attdef", p, "justify")?.unwrap_or("L")).ok_or_else(|| bad("attdef", "unknown justification"))?;
-    // Align and Fit run between two baseline points; `attdef` has one, so it can't express them.
-    if matches!(j.0, HAlign::Aligned | HAlign::Fit) {
-        return Err(bad("attdef", "Align and Fit need two points, which attdef doesn't take yet; use L, C, R, M or TL … BR"));
-    }
+    let j = attdef_justify(opt_str_param("attdef", p, "justify")?.unwrap_or("L"))?;
     let style = match opt_str_param("attdef", p, "style")? {
-        Some(n) => style_values(s, n)?.ok_or_else(|| bad("attdef", format!("no text style \"{n}\"")))?,
+        Some(n) => resolve_style(s, n)?,
         None => current_style_values(s),
     };
     let (prompt, default) = (str_param(p, "prompt").unwrap_or(tag), str_param(p, "default").unwrap_or(""));
@@ -898,26 +910,64 @@ impl Interactive for InsertM {
     }
 }
 
-#[derive(Default)]
+/// What the start-point prompt of `-ATTDEF` is asking for after a `Justify` or `Style` option.
+#[derive(Clone, Copy, PartialEq)]
+enum AttdefAsk {
+    Justify,
+    Style,
+}
+
 struct AttdefM {
     tag: Option<String>,
     prompt: Option<String>,
     default: Option<String>,
+    justify: (HAlign, VAlign),
+    /// The text style chosen with the `Style` option; the current one when `None`.
+    style: Option<(String, f64, f64)>,
+    asking: Option<AttdefAsk>,
+}
+
+impl Default for AttdefM {
+    fn default() -> Self {
+        Self { tag: None, prompt: None, default: None, justify: (HAlign::Left, VAlign::Baseline), style: None, asking: None }
+    }
 }
 
 impl Interactive for AttdefM {
     fn name(&self) -> &'static str {
         "ATTDEF"
     }
-    fn prompt(&self, _s: &Session) -> Prompt {
+    fn prompt(&self, s: &Session) -> Prompt {
+        match self.asking {
+            Some(AttdefAsk::Justify) => return super::draw::justify_prompt(),
+            Some(AttdefAsk::Style) => return Prompt::new("Enter style name", Accept::TEXT).default(current_text_style(s)),
+            None => {}
+        }
         match (&self.tag, &self.prompt, &self.default) {
             (None, ..) => Prompt::new("Enter attribute tag name", Accept::TEXT),
             (Some(_), None, _) => Prompt::new("Enter attribute prompt", Accept::TEXT),
             (Some(_), Some(_), None) => Prompt::new("Enter default attribute value", Accept::TEXT),
-            _ => Prompt::new("Specify start point of text", Accept::POINT),
+            _ => Prompt::new("Specify start point of text", Accept::POINT).kw(&["Justify", "Style"]),
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> Result<Step> {
+        // The answer to a Justify or Style option; a bad answer is an error and asks again.
+        if let Some(ask) = self.asking {
+            let word = match &i {
+                Input::Keyword(k) | Input::Text(k) => k.clone(),
+                Input::Enter => String::new(),
+                _ => return Ok(Step::Continue),
+            };
+            match ask {
+                AttdefAsk::Justify => self.justify = attdef_justify(&word)?,
+                AttdefAsk::Style => {
+                    let name = if word.trim().is_empty() { current_text_style(s) } else { word };
+                    self.style = Some(resolve_style(s, &name)?);
+                }
+            }
+            self.asking = None;
+            return Ok(Step::Continue);
+        }
         let text = match &i {
             Input::Text(t) => Some(t.clone()),
             Input::Enter => Some(String::new()),
@@ -931,14 +981,18 @@ impl Interactive for AttdefM {
             }
             (Some(_), None, _) => self.prompt = text,
             (Some(_), Some(_), None) => self.default = text,
-            (Some(tag), Some(pr), Some(def)) => {
-                if let Input::Point(p) = i {
+            (Some(tag), Some(pr), Some(def)) => match i {
+                Input::Keyword(k) if k == "Justify" => self.asking = Some(AttdefAsk::Justify),
+                Input::Keyword(k) if k == "Style" => self.asking = Some(AttdefAsk::Style),
+                Input::Point(p) => {
                     let h = s.doc()?.header.f64("TEXTSIZE", 0.2);
-                    let k = attdef_kind(tag, pr, def, p, h, false, (HAlign::Left, VAlign::Baseline), current_style_values(s));
+                    let style = self.style.clone().unwrap_or_else(|| current_style_values(s));
+                    let k = attdef_kind(tag, pr, def, p, h, false, self.justify, style);
                     s.add_entity(k)?;
                     return Ok(Step::Done);
                 }
-            }
+                _ => {}
+            },
         }
         Ok(Step::Continue)
     }

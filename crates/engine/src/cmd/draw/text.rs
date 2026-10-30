@@ -25,6 +25,12 @@ pub(crate) fn justify(j: &str) -> Option<(HAlign, VAlign)> {
     })
 }
 
+/// The prompt for a justification option (TEXT's `Justify`, `-ATTDEF`'s `Justify`).
+pub(crate) fn justify_prompt() -> Prompt {
+    Prompt::new("Enter an option", Accept::TEXT)
+        .kw(&["Left", "Center", "Right", "Align", "Middle", "Fit", "TL", "TC", "TR", "ML", "MC", "MR", "BL", "BC", "BR"])
+}
+
 pub(crate) fn make_text(s: &Session, at: Vec2, value: &str, height: f64, rotation: f64, j: (HAlign, VAlign)) -> EntityKind {
     let style = s.doc().map(|d| d.header.str("TEXTSTYLE", "Standard")).unwrap_or_else(|_| "Standard".into());
     let (h, v) = j;
@@ -119,8 +125,7 @@ impl Interactive for TextM {
     fn prompt(&self, s: &Session) -> Prompt {
         let th = s.doc().map(|d| d.header.f64("TEXTSIZE", 0.2)).unwrap_or(0.2);
         if self.asking_justify {
-            return Prompt::new("Enter an option", Accept::TEXT)
-                .kw(&["Left", "Center", "Right", "Align", "Middle", "Fit", "TL", "TC", "TR", "ML", "MC", "MR", "BL", "BC", "BR"]);
+            return justify_prompt();
         }
         match (self.at, self.height, self.rotation) {
             (None, _, _) => Prompt::new("Specify start point of text", Accept::POINT).kw(&["Justify", "Style"]),

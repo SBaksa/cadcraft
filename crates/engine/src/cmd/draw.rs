@@ -31,8 +31,8 @@ use line_pline::{LineM, PlineM, run_line, run_pline};
 use point::{DonutM, PointM, RayM, run_donut, run_point, run_ray};
 use polygon::{PolygonM, run_polygon};
 use spline::{SplineM, run_spline};
-pub(crate) use text::justify;
 use text::{MTextM, TextM, run_mtext, run_text};
+pub(crate) use text::{justify, justify_prompt};
 
 /// Every draw command's spec: JSON parameters, menu path, aliases and the interactive prompt
 /// machine each command starts.
