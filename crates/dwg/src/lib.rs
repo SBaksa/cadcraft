@@ -760,11 +760,14 @@ mod tests {
     use super::*;
 
     /// The DXF of an empty drawing, enough for the bridge to make a small DWG.
+    #[cfg(not(target_arch = "wasm32"))]
     const MINIMAL_DXF: &str = "  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1032\n  0\nENDSEC\n  0\nEOF\n";
 
     /// Makes `stage` panic on the current thread until dropped.
+    #[cfg(not(target_arch = "wasm32"))]
     struct PanicIn;
 
+    #[cfg(not(target_arch = "wasm32"))]
     impl PanicIn {
         fn at(stage: &'static str) -> Self {
             PANIC_IN.with(|p| p.set(Some(stage)));
@@ -772,6 +775,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     impl Drop for PanicIn {
         fn drop(&mut self) {
             PANIC_IN.with(|p| p.set(None));
