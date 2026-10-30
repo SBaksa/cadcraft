@@ -56,11 +56,18 @@ mod fs {
             return None;
         }
         if append {
-            use std::io::Write;
-            let data = std::fs::read(src).ok()?;
-            let mut f = std::fs::OpenOptions::new().append(true).open(dst).ok()?;
-            f.write_all(&data).ok()?;
-            Some(data.len() as u64)
+            // Streamed through a fixed buffer, never read whole. Appending a file to itself (the
+            // same file under another name, by symlink) is refused, and the copy stops at the
+            // source's size when it began, so a hard link to the destination can't grow forever.
+            let canon = |p: &str| std::fs::canonicalize(p).ok();
+            let (cs, cd) = (canon(src)?, canon(dst)?);
+            if cs == cd {
+                return None;
+            }
+            let from = std::fs::File::open(src).ok()?;
+            let len = from.metadata().ok()?.len();
+            let mut to = std::fs::OpenOptions::new().append(true).open(dst).ok()?;
+            std::io::copy(&mut std::io::Read::take(from, len), &mut to).ok()
         } else if Path::new(dst).exists() {
             // Never over an existing file.
             None
@@ -168,24 +175,25 @@ pub(super) fn vl_mkdir(a: &[Value]) -> R {
 pub(super) fn vl_file_systime(a: &[Value]) -> R {
     arity(a, 1, 1)?;
     let Some(ms) = fs::modified(&string(&a[0])?) else { return Ok(Value::Nil) };
-    Ok(Value::list(systime(ms).into_iter().map(|v| Value::Int(v as i32)).collect::<Vec<_>>()))
+    let Some(parts) = systime(ms) else { return Ok(Value::Nil) };
+    Ok(Value::list(parts.into_iter().map(|v| Value::Int(v as i32)).collect::<Vec<_>>()))
 }
 
-/// Milliseconds since 1970 as (year month weekday day hours minutes seconds ms), UTC.
-fn systime(ms: i64) -> [i64; 8] {
-    let (days, rest) = (ms.div_euclid(86_400_000), ms.rem_euclid(86_400_000));
-    // Days to a civil date (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    let weekday = (days + 4).rem_euclid(7);
-    [year, month, weekday, day, rest / 3_600_000, rest / 60_000 % 60, rest / 1000 % 60, rest % 1000]
+/// Milliseconds since 1970 as (year month weekday day hours minutes seconds ms), UTC; `None`
+/// outside the calendar's range.
+fn systime(ms: i64) -> Option<[i64; 8]> {
+    use chrono::{Datelike, Timelike};
+    let t = chrono::DateTime::from_timestamp_millis(ms)?;
+    Some([
+        i64::from(t.year()),
+        i64::from(t.month()),
+        i64::from(t.weekday().num_days_from_sunday()),
+        i64::from(t.day()),
+        i64::from(t.hour()),
+        i64::from(t.minute()),
+        i64::from(t.second()),
+        i64::from(t.timestamp_subsec_millis()),
+    ])
 }
 
 /// `(vl-directory-files [directory pattern what])`: the names in a folder matching `pattern`
@@ -500,11 +508,52 @@ mod tests {
     fn systime_turns_milliseconds_into_a_utc_date() {
         // 2026-10-16 09:05:07.250 UTC, a Friday.
         let ms = 1_792_141_507_250;
-        assert_eq!(systime(ms), [2026, 10, 5, 16, 9, 5, 7, 250]);
-        assert_eq!(systime(0), [1970, 1, 4, 1, 0, 0, 0, 0]);
+        assert_eq!(systime(ms), Some([2026, 10, 5, 16, 9, 5, 7, 250]));
+        assert_eq!(systime(0), Some([1970, 1, 4, 1, 0, 0, 0, 0]));
         // Before 1970 and on a leap day.
-        assert_eq!(systime(-86_400_000), [1969, 12, 3, 31, 0, 0, 0, 0]);
-        assert_eq!(systime(951_782_400_000), [2000, 2, 2, 29, 0, 0, 0, 0]);
+        assert_eq!(systime(-86_400_000), Some([1969, 12, 3, 31, 0, 0, 0, 0]));
+        assert_eq!(systime(951_782_400_000), Some([2000, 2, 2, 29, 0, 0, 0, 0]));
+        assert_eq!(systime(i64::MAX), None);
+    }
+
+    /// A file appended to itself, or to another name for it, is refused and left as it was; a
+    /// large source is streamed in (the appended bytes are all there), and the existing rules hold:
+    /// no append to a missing file, no copy over an existing one.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn copy_streams_and_never_grows_a_file_into_itself() {
+        let dir = std::env::temp_dir().join(format!("cadcraft-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = |n: &str| dir.join(n).to_string_lossy().into_owned();
+        let (a, b, c) = (p("a.bin"), p("b.bin"), p("c.bin"));
+
+        // 9 MiB of a repeating pattern: more than any one buffer.
+        let chunk: Vec<u8> = (0..=255u8).collect();
+        let mut data = Vec::new();
+        for _ in 0..(9 << 12) {
+            data.extend_from_slice(&chunk);
+        }
+        std::fs::write(&a, &data).unwrap();
+        std::fs::write(&b, b"head").unwrap();
+        assert_eq!(fs::copy(&a, &b, true), Some(data.len() as u64));
+        let got = std::fs::read(&b).unwrap();
+        assert_eq!((got.len(), got.get(..4), got.get(4..)), (data.len() + 4, Some(&b"head"[..]), Some(&data[..])));
+
+        // Itself: refused, unchanged.
+        assert_eq!(fs::copy(&a, &a, true), None);
+        assert_eq!(std::fs::metadata(&a).unwrap().len(), data.len() as u64);
+        // Itself under another path (a dot segment).
+        let alias = format!("{}{}.{}a.bin", dir.to_string_lossy(), std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR);
+        assert_eq!(fs::copy(&a, &alias, true), None);
+        assert_eq!(std::fs::metadata(&a).unwrap().len(), data.len() as u64);
+
+        // Without append: a new file is made, an existing one is never overwritten; append needs
+        // the destination to exist.
+        assert_eq!(fs::copy(&a, &c, false), Some(data.len() as u64));
+        assert_eq!(fs::copy(&a, &c, false), None);
+        assert_eq!(fs::copy(&a, &p("missing.bin"), true), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
