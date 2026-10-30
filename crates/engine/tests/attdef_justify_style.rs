@@ -102,3 +102,36 @@ fn a_block_and_a_saved_file_keep_them() {
     let att = read.model.iter().find_map(|e| if let EntityKind::Insert(i) = &e.kind { i.attribs.first().cloned() } else { None }).unwrap();
     assert_eq!((att.text.halign, att.text.valign, att.text.style.as_str()), (HAlign::Center, VAlign::Middle, "ROMANS"), "reopened attribute");
 }
+
+/// A `justify` or `style` that is present but not a string is an error, not a silent default (#1720).
+#[test]
+fn a_non_string_justify_or_style_is_refused() {
+    let mut s = session();
+    let n = s.doc().unwrap().model.len();
+    for (key, bad) in [("justify", json!(1)), ("justify", json!(true)), ("style", json!(2)), ("style", json!(["ROMANS"]))] {
+        let mut p = json!({"tag": "T", "at": [0, 0]});
+        p[key] = bad.clone();
+        let err = s.execute("attdef", &p).unwrap_err().to_string();
+        assert!(err.contains(key) && err.contains("string"), "{key} = {bad}: {err}");
+    }
+    // Null means absent.
+    assert!(s.execute("attdef", &json!({"tag": "T", "at": [0, 0], "justify": null, "style": null})).is_ok());
+    assert_eq!(s.doc().unwrap().model.len(), n + 1, "only the null one was added");
+}
+
+/// The definition takes its text style's width factor and oblique angle (#1720).
+#[test]
+fn the_definition_takes_the_styles_width_factor_and_oblique() {
+    let mut s = session();
+    s.execute("style", &json!({"name": "SLANT", "font": "romans.shx", "widthFactor": 0.7, "oblique": 15, "current": false})).unwrap();
+    let a = add(&mut s, json!({"tag": "T", "at": [0, 0], "style": "SLANT"}));
+    assert!((a.text.width_factor - 0.7).abs() < 1e-12, "width factor {}", a.text.width_factor);
+    assert!((a.text.oblique - 15f64.to_radians()).abs() < 1e-12, "oblique {}", a.text.oblique);
+    // The current style, when none is named.
+    s.execute("style.current", &json!({"name": "SLANT"})).unwrap();
+    let a = add(&mut s, json!({"tag": "T", "at": [0, 0]}));
+    assert!((a.text.width_factor - 0.7).abs() < 1e-12 && (a.text.oblique - 15f64.to_radians()).abs() < 1e-12);
+    // A plain style keeps 1 and 0.
+    let a = add(&mut s, json!({"tag": "T", "at": [0, 0], "style": "Standard"}));
+    assert_eq!((a.text.width_factor, a.text.oblique), (1.0, 0.0));
+}
