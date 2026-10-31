@@ -214,3 +214,32 @@ fn typed_style_that_does_not_exist_asks_again() {
     s.cmdline("0,0").unwrap();
     assert_eq!(last_attdef(&s).text.style, "ROMANS");
 }
+
+/// The keywords a command's Justify prompt offers, from `[A/B/...]` in its prompt text.
+fn justify_options(s: &Session) -> Vec<String> {
+    let p = s.prompt_text();
+    let inner = p.split_once('[').and_then(|(_, r)| r.split_once(']')).map(|(i, _)| i).unwrap_or("");
+    inner.split('/').map(str::to_string).collect()
+}
+
+/// `-ATTDEF`'s Justify prompt doesn't list Align and Fit, which it would only refuse (they run
+/// between two points), while TEXT's still offers every option (#1720).
+#[test]
+fn attdef_justify_prompt_leaves_out_align_and_fit_but_text_keeps_them() {
+    let mut s = session();
+    typed_to_start_point(&mut s);
+    s.cmdline("J").unwrap();
+    let opts = justify_options(&s);
+    assert!(opts.iter().any(|o| o == "Left") && opts.iter().any(|o| o == "MC"), "{opts:?}");
+    assert!(!opts.iter().any(|o| o == "Align" || o == "Fit"), "{opts:?}");
+    // A typed A or F is still refused.
+    s.cmdline("A").unwrap();
+    assert!(s.log.iter().any(|l| l.contains("Align and Fit")), "{:?}", s.log);
+    s.cmdline("*Cancel*").ok();
+
+    let mut t = session();
+    t.cmdline("text").unwrap();
+    t.cmdline("J").unwrap();
+    let opts = justify_options(&t);
+    assert!(opts.iter().any(|o| o == "Align") && opts.iter().any(|o| o == "Fit"), "{opts:?}");
+}

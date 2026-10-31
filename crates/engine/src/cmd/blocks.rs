@@ -939,7 +939,7 @@ impl Interactive for AttdefM {
     }
     fn prompt(&self, s: &Session) -> Prompt {
         match self.asking {
-            Some(AttdefAsk::Justify) => return super::draw::justify_prompt(),
+            Some(AttdefAsk::Justify) => return super::draw::justify_prompt(false),
             Some(AttdefAsk::Style) => return Prompt::new("Enter style name", Accept::TEXT).default(current_text_style(s)),
             None => {}
         }

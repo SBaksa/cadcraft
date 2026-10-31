@@ -25,10 +25,14 @@ pub(crate) fn justify(j: &str) -> Option<(HAlign, VAlign)> {
     })
 }
 
-/// The prompt for a justification option (TEXT's `Justify`, `-ATTDEF`'s `Justify`).
-pub(crate) fn justify_prompt() -> Prompt {
-    Prompt::new("Enter an option", Accept::TEXT)
-        .kw(&["Left", "Center", "Right", "Align", "Middle", "Fit", "TL", "TC", "TR", "ML", "MC", "MR", "BL", "BC", "BR"])
+/// The justification options TEXT offers, in prompt order.
+const JUSTIFY_OPTIONS: [&str; 15] = ["Left", "Center", "Right", "Align", "Middle", "Fit", "TL", "TC", "TR", "ML", "MC", "MR", "BL", "BC", "BR"];
+
+/// The prompt for a justification option. Align and Fit run between two baseline points, so a
+/// command that takes one point (`-ATTDEF`) passes `two_points: false` and doesn't list them.
+pub(crate) fn justify_prompt(two_points: bool) -> Prompt {
+    let options: Vec<&str> = JUSTIFY_OPTIONS.into_iter().filter(|o| two_points || !matches!(*o, "Align" | "Fit")).collect();
+    Prompt::new("Enter an option", Accept::TEXT).kw(&options)
 }
 
 pub(crate) fn make_text(s: &Session, at: Vec2, value: &str, height: f64, rotation: f64, j: (HAlign, VAlign)) -> EntityKind {
@@ -125,7 +129,7 @@ impl Interactive for TextM {
     fn prompt(&self, s: &Session) -> Prompt {
         let th = s.doc().map(|d| d.header.f64("TEXTSIZE", 0.2)).unwrap_or(0.2);
         if self.asking_justify {
-            return justify_prompt();
+            return justify_prompt(true);
         }
         match (self.at, self.height, self.rotation) {
             (None, _, _) => Prompt::new("Specify start point of text", Accept::POINT).kw(&["Justify", "Style"]),
